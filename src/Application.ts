@@ -1,17 +1,20 @@
 import http, { Server } from 'http';
-
+import { createContext } from './Context';
+import { EventEmitter } from 'events'
 
 type Middleware<T = any> = (ctx: any, next: () => Promise<T>) => Promise<T>;
 type MiddleNext = () => Promise<any>;
 
 export interface OPTS { }
 
-class Application {
+class Application extends EventEmitter {
+
   private middlewares: Middleware[] = [];
   private opt: OPTS;
   private server: Server;
 
   constructor(opts?: OPTS) {
+    super();
     this.opt = opts;
   }
 
@@ -38,10 +41,24 @@ class Application {
   }
 
   private httpCallback = () => {
-    return (req: any, res: any) => {
-      let ctx = '';
+    return (req: http.IncomingMessage, res: http.ServerResponse) => {
+
+      let ctx = createContext(req, res);
+      ctx.app = this;
+
+      let onResponse = () => {
+        ctx.res.end(ctx.response.body);
+      }
+
+      let onError = (err:Error) => {
+        ctx.res.end(err.message);
+        this.emit('error',err);
+      }
+
       let fn = this.componse();
-      fn(ctx);
+      fn(ctx)
+        .then(onResponse)
+        .catch(onError);
     }
   }
 
